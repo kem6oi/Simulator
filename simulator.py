@@ -330,9 +330,9 @@ def process_command(client, payload):
         import traceback
         traceback.print_exc()
 
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, reason_code, properties):
     """Callback when connected to MQTT broker"""
-    if rc == 0:
+    if reason_code == 0:
         print_status(f"Connected to MQTT Broker: {MQTT_PROTOCOL}://{MQTT_HOST}:{MQTT_PORT}", "SUCCESS")
 
         # Publish online status
@@ -355,14 +355,7 @@ def on_connect(client, userdata, flags, rc):
         print_status("Supported commands: power, brightness", "INFO")
         display_device_state()
     else:
-        error_messages = {
-            1: "Connection refused - incorrect protocol version",
-            2: "Connection refused - invalid client identifier",
-            3: "Connection refused - server unavailable",
-            4: "Connection refused - bad username or password",
-            5: "Connection refused - not authorized"
-        }
-        print_status(f"Connection failed: {error_messages.get(rc, f'Unknown error code {rc}')}", "ERROR")
+        print_status(f"Connection failed: {reason_code}", "ERROR")
         sys.exit(1)
 
 def on_message(client, userdata, msg):
@@ -390,7 +383,7 @@ def main():
 
     # Create MQTT client
     client_id = f"simulator_{DEVICE_ID}_{int(time.time())}"
-    client = mqtt.Client(client_id=client_id)
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id)
 
     # Set Last Will before connecting
     will_payload = json.dumps({
@@ -423,7 +416,13 @@ def main():
     try:
         # Connect to broker
         print_status(f"Connecting to {MQTT_HOST}:{MQTT_PORT}...", "INFO")
-        client.connect(MQTT_HOST, MQTT_PORT, 60)
+        try:
+            client.connect(MQTT_HOST, MQTT_PORT, 60)
+        except (OSError, Exception) as e:
+            print_status(f"Failed to connect to MQTT broker: {e}", "ERROR")
+            if isinstance(e, OSError):
+                print_status(f"Error details: [Errno {e.errno}] {e.strerror}", "ERROR")
+            sys.exit(1)
 
         # Start heartbeat in background thread
         heartbeat_thread = threading.Thread(target=heartbeat_loop, args=(client,), daemon=True)
